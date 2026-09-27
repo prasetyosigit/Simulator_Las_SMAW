@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#131A16">
 <title>Simulator Las SMAW Kampuh V</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -176,6 +179,9 @@ input[type=range]{width:100%;accent-color:var(--accent);height:32px}
     <span class="kv elec"><small>Sisa elektroda</small><span class="ebar"><i id="bElec"></i></span></span>
     <span class="kv"><small>Waktu</small><b id="bTime">0:00</b></span>
     <span class="grow"></span>
+    <button class="icon" id="bFull" aria-label="Layar penuh" title="Layar penuh">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path id="fullIco" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    </button>
     <button class="icon" id="bSound" aria-pressed="true" aria-label="Suara busur">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path id="sndWave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>
     </button>
@@ -310,6 +316,7 @@ input[type=range]{width:100%;accent-color:var(--accent);height:32px}
 <div id="rotate">
   <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="20" y="6" width="24" height="40" rx="4"/><path d="M8 50c6 8 18 10 30 8"/><path d="M34 54l5 4-4 5"/></svg>
   <p>Putar HP ke posisi mendatar untuk mulai mengelas.</p>
+  <button class="btn primary" id="btnRotFull">Layar penuh dan mendatar</button>
 </div>
 
 <script>
@@ -371,7 +378,7 @@ const WP={thick:8,passes:[],cum:new Float32Array(NC),back:new Float32Array(NC),p
 let cur=null, state='setup', paused=true, pendingType='root', lastRec=null;
 const arc={on:false,L:6,x:-3,y:0,stuck:false,need:false,touchT:0,shortT:0,dv:0};
 const hand={tx:-3,ty:0};
-let pace=null;
+let pace=null,hudLeft=false;
 let elecLen=EL_LEN, handSpeed=0, vSmooth=0, heat=new Float32Array(NC), sparks=[], yHist=[], firstStrike=false, slagT=0;
 const keys={up:false,down:false};
 
@@ -482,7 +489,7 @@ $('#ampRange').oninput=e=>setAmp(+e.target.value);
 $('#ampMinus').onclick=()=>setAmp(+$('#ampRange').value-1);
 $('#ampPlus').onclick=()=>setAmp(+$('#ampRange').value+1);
 $('#btnPassBack').onclick=()=>{state='setup';show('#shSetup');};
-$('#btnStart').onclick=()=>{Snd.init();startPass(pendingType);};
+$('#btnStart').onclick=()=>{Snd.init();if(matchMedia('(pointer:coarse)').matches)goFull();startPass(pendingType);};
 
 function startPass(type){
   const amp=lastAmp[type];
@@ -518,6 +525,21 @@ $('#mNewPlate').onclick=()=>newPlate();
 $('#mSetup').onclick=()=>{state='setup';show('#shSetup');};
 $('#mHist').onclick=()=>openHist();$('#btnHist1').onclick=()=>openHist();
 function newPlate(){WP.passes=[];recompute();WP.plateNo++;cur=null;openPass('root');}
+const canFull=!!(document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen);
+if(!canFull)$('#bFull').hidden=true;
+$('#btnRotFull').onclick=()=>goFull();
+if(!canFull)$('#btnRotFull').hidden=true;
+const isFull=()=>!!(document.fullscreenElement||document.webkitFullscreenElement);
+async function goFull(){
+  if(!canFull||isFull())return;
+  try{const el=document.documentElement;await (el.requestFullscreen?el.requestFullscreen({navigationUI:'hide'}):el.webkitRequestFullscreen());}catch(e){return;}
+  try{await screen.orientation.lock('landscape');}catch(e){}
+}
+function exitFull(){try{(document.exitFullscreen||document.webkitExitFullscreen).call(document);}catch(e){}}
+$('#bFull').onclick=()=>isFull()?exitFull():goFull();
+const fullIcon=()=>{$('#fullIco').setAttribute('d',isFull()?'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5':'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5');$('#bFull').setAttribute('aria-label',isFull()?'Keluar dari layar penuh':'Layar penuh');};
+document.addEventListener('fullscreenchange',()=>{fullIcon();requestAnimationFrame(()=>{resize();placeHold();});});
+document.addEventListener('webkitfullscreenchange',()=>{fullIcon();requestAnimationFrame(()=>{resize();placeHold();});});
 $('#bSound').onclick=()=>{Snd.on=!Snd.on;$('#bSound').setAttribute('aria-pressed',Snd.on);$('#sndWave').style.opacity=Snd.on?1:0.15;};
 $('#btnBackRes').onclick=()=>{$('#fBack').hidden=true;show('#shResult');};
 
@@ -770,7 +792,7 @@ function bar(ctx,x,y,w,label,val,min,max,band,unit,dec=1){
 }
 function drawGauges(ctx){
   if(state!=='weld'||!cur||cfg.mode!=='latihan')return;
-  const w=Math.min(170,W*0.25),x0=W-w-8,y0=8,h=Math.max(64,PH*0.38);panel(ctx,x0,y0,w,h);
+  const w=Math.min(170,W*0.25),x0=hudLeft?Math.min(180,W*0.26)+16:W-w-8,y0=8,h=Math.max(64,PH*0.38);panel(ctx,x0,y0,w,h);
   const rh=(h-10)/3,iw=w-16,ix=x0+8;
   bar(ctx,ix,y0+5,iw,'Panjang busur',arc.on?arc.L:null,0,7,L_IDEAL,' mm');
   bar(ctx,ix,y0+5+rh,iw,'Kecepatan jalan',arc.on?vSmooth:null,0,cur.vIdeal*2.6,cur.vBand,' mm/s');
@@ -794,12 +816,13 @@ function drawPad(ctx){
   if(cur&&cur.type!=='root'){ctx.strokeStyle='rgba(242,183,5,.18)';ctx.beginPath();const a=cur.type==='cap'?(widthAt(WP.thick)/2):3;
     ctx.moveTo(X(0),padCY-a*padSY);ctx.lineTo(X(200),padCY-a*padSY);ctx.moveTo(X(0),padCY+a*padSY);ctx.lineTo(X(200),padCY+a*padSY);ctx.stroke();}
   ctx.fillStyle='#57625A';ctx.font=font(12,600);ctx.textBaseline='bottom';ctx.textAlign='right';
-  ctx.fillText('Area jempol kanan: kiri-kanan untuk jalan, atas-bawah untuk ayunan. Arah las ke kanan.',W-10,H-6);ctx.textAlign='left';
+  ctx.textAlign='left';ctx.fillText('Area jempol kanan. Arah las →',X(0),H-6);
   if(cur&&state==='weld'&&cfg.mode==='latihan'&&pace!==null&&pace<=205){const x=X(pace);ctx.strokeStyle='rgba(98,192,138,.9)';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x,PY0+30);ctx.lineTo(x,H-24);ctx.stroke();
     ctx.fillStyle='#62C08A';ctx.font=font(12,600);ctx.textBaseline='top';ctx.fillText('ikuti garis hijau',x+6,PY0+30);ctx.lineWidth=1;}
   if(padPx&&padPtr&&!padPtr.plate){ctx.strokeStyle='#F2B705';ctx.lineWidth=2;ctx.beginPath();ctx.arc(padPx[0],padPx[1],22,0,Math.PI*2);ctx.stroke();}
 }
 function draw(){
+  if(state==='weld'){if(arc.x>105)hudLeft=true;else if(arc.x<85)hudLeft=false;}
   g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
   g.fillStyle='#262B28';g.fillRect(0,0,W,PH);
   g.save();g.beginPath();g.rect(0,0,W,PH);g.clip();
