@@ -378,7 +378,10 @@ const WP={thick:8,passes:[],cum:new Float32Array(NC),back:new Float32Array(NC),p
 let cur=null, state='setup', paused=true, pendingType='root', lastRec=null;
 const arc={on:false,L:6,x:-3,y:0,stuck:false,need:false,touchT:0,shortT:0,dv:0};
 const hand={tx:-3,ty:0};
-let pace=null,hudLeft=false;
+let pace=null,hudLeft=false,wph=0,weaveNow=0;
+function needWeave(type){if(!cur&&!type)return 0;type=type||cur.type;if(type==='root')return 0;const tA=targetArea(type,lastAmp[type]),nat=natW(tA);
+  if(type==='cap')return Math.max(2,widthAt(WP.thick)+2-nat);
+  return Math.max(1.5,widthAt(Math.min(hOf(avgCum()+tA*0.5),WP.thick))-nat+0.5);}
 let elecLen=EL_LEN, handSpeed=0, vSmooth=0, heat=new Float32Array(NC), sparks=[], yHist=[], xHist=[], firstStrike=false, slagT=0;
 const keys={up:false,down:false};
 
@@ -403,7 +406,7 @@ function resize(){
   dpr=Math.min(2,window.devicePixelRatio||1);W=r.width;H=r.height;
   cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);
   PH=Math.round(H*0.62);PX0=18;SX=(W-36)/200;CY=PH*0.6;SY=PH/34;
-  PY0=PH+6;padCY=(PY0+H)/2;padSY=((H-PY0)/2-6)/8;
+  PY0=PH+6;padCY=(PY0+H)/2;padSY=((H-PY0)/2-6)/6;
 }
 new ResizeObserver(resize).observe($('#cvwrap'));
 const X=mm=>PX0+mm*SX, Y=l=>CY+l*SY;
@@ -496,9 +499,9 @@ function startPass(type){
   const vi=volRate(amp)/targetArea(type,amp);
   cur={type,amp,cells:Array.from({length:NC},newCell),sticks:0,breaks:0,strikes:0,electrodes:1,time:0,arcTime:0,dried:cfg.dried,mode:cfg.mode,vBand:[vi*0.75,vi*1.3],vIdeal:vi};
   elecLen=EL_LEN;Object.assign(arc,{on:false,L:6,x:-3,y:0,stuck:false,need:false,touchT:0,shortT:0,dv:0});
-  pace=null;hand.tx=-3;hand.ty=0;heat.fill(0);sparks=[];yHist=[];xHist=[];vSmooth=0;handSpeed=0;firstStrike=false;
+  pace=null;wph=0;weaveNow=0;hand.tx=-3;hand.ty=0;heat.fill(0);sparks=[];yHist=[];xHist=[];vSmooth=0;handSpeed=0;firstStrike=false;
   ['#fUnstick','#fChange','#fSlag','#fBack'].forEach(s=>$(s).hidden=true);
-  $('#hint').innerHTML=hintText();$('#hint').hidden=false;
+  $('#hint').innerHTML=hintText()+(type==='root'?'':' <b>Ayunan:</b> gerakkan jempol naik-turun di antara dua garis kuning mengikuti titik hijau. Tahan sebentar di tiap garis, lewati bagian tengah lebih cepat.');$('#hint').hidden=false;
   $('#bPass').textContent=`${PASS[type].nama}, ${PASS[type].el}`;$('#bAmp').textContent=amp+' A';
   $('#bFinish').disabled=false;
   state='weld';show(null);requestAnimationFrame(placeHold);
@@ -548,7 +551,7 @@ function deposit(x0,x1,vol,en,dt){
   const a=Math.min(x0,x1),b=Math.max(x0,x1);if(b<0||a>=NC)return;
   const c0=clamp(Math.floor(a),0,NC-1),c1=clamp(Math.floor(b),0,NC-1),n=c1-c0+1;
   for(let c=c0;c<=c1;c++){const k=cur.cells[c];k.vol+=vol/n;k.E+=en/n;k.t+=dt/n;k.n++;k.sL+=arc.L;k.sI+=cur.amp;k.sY+=arc.y;
-    if(arc.y<k.minY)k.minY=arc.y;if(arc.y>k.maxY)k.maxY=arc.y;k.vis=true;heat[c]=1;}
+    if(arc.y<k.minY)k.minY=arc.y;if(arc.y>k.maxY)k.maxY=arc.y;k.wv=Math.max(k.wv||0,weaveNow);k.vis=true;heat[c]=1;}
 }
 function step(dt){
   for(let c=0;c<NC;c++)if(heat[c]>0)heat[c]=Math.max(0,heat[c]-dt/8);
@@ -558,13 +561,14 @@ function step(dt){
   cur.time+=dt;
   const x0=arc.x,y0=arc.y;const kx=Math.min(1,dt/0.18),ky=Math.min(1,dt/0.07);
   if(!arc.on&&Math.abs(hand.tx-arc.x)>8){arc.x=hand.tx;arc.y=hand.ty;}else{arc.x+=(hand.tx-arc.x)*kx;arc.y+=(hand.ty-arc.y)*ky;}
-  const sp=Math.hypot(arc.x-x0,arc.y-y0)/dt;handSpeed+=(sp-handSpeed)*Math.min(1,dt*12);
+  const sp=Math.hypot(hand.tx-(step.hx??hand.tx),hand.ty-(step.hy??hand.ty))/dt;step.hx=hand.tx;step.hy=hand.ty;handSpeed+=(sp-handSpeed)*Math.min(1,dt*12);
   const feed=feedRate();
   if(arc.stuck){arc.L=0;return;}
   if(arc.need)return;
   if(arc.on){
     arc.dv+=(Math.random()-0.5)*3*dt;arc.dv*=1-1.2*dt;arc.dv=clamp(arc.dv,-0.4,0.4);
-    if(pace!==null)pace+=cur.vIdeal*dt;const b=burnRate(cur.amp);arc.L+=(b-feed)*dt+arc.dv*dt;elecLen-=b*dt;cur.arcTime+=dt;
+    if(pace!==null){pace+=cur.vIdeal*dt;wph+=dt*1.0;}
+    {let mn=99,mx=-99;for(const q of yHist){if(q[0]>=cur.time-1.2){mn=Math.min(mn,q[1]);mx=Math.max(mx,q[1]);}}weaveNow=mx>mn?mx-mn:0;}const b=burnRate(cur.amp);arc.L+=(b-feed)*dt+arc.dv*dt;elecLen-=b*dt;cur.arcTime+=dt;
     if(arc.L<0)arc.L=0;
     deposit(x0,arc.x,volRate(cur.amp)*dt,(19+arc.L)*cur.amp*dt,dt);
     xHist.push([cur.time,arc.x]);while(xHist.length>2&&xHist[0][0]<cur.time-1.5)xHist.shift();
@@ -595,7 +599,7 @@ function evaluate(){
     const k=P.cells[c],before=WP.cum[c];
     const r={defs:[],A:k.vol,before,delta:k.vol,back:0,bt:false,w:0,off:0,L:0,I:0,v:0,weave:0,p:0};
     if(!k.vis||k.vol<0.8){r.defs.push('NW');r.w=k.vol>0?natW(k.vol)*0.6:0;cells.push(r);continue;}
-    const A=k.vol,L=k.sL/k.n,I=k.sI/k.n,off=k.sY/k.n,weave=Math.max(0,k.maxY-k.minY),v=k.t>0?1/k.t:0;
+    const A=k.vol,L=k.sL/k.n,I=k.sI/k.n,off=k.sY/k.n,weave=Math.max(0,k.maxY-k.minY,k.wv||0),v=k.t>0?1/k.t:0;
     Object.assign(r,{L,I,off,weave,v});if(c>=5&&c<195){sL+=L;sV+=Math.min(v,8);nn++;}
     const Lf=clamp(1.15-0.075*L,0.6,1.1);
     if(type==='root'){
@@ -608,7 +612,7 @@ function evaluate(){
     }else if(type==='fill'){
       if(A<6)r.defs.push('TN');else if(A>24)r.defs.push('SI');
       if(I<60)r.defs.push('LF');
-      const hA=hOf(before+A),gw=widthAt(Math.min(hA,t));if(gw-(natW(A)+weave)>2.5)r.defs.push('SW');
+      const hA=hOf(before+A),gw=widthAt(Math.min(hA,t));if(weave<needWeave('fill')-1.2||gw-(natW(A)+weave)>2.5)r.defs.push('SW');
       if(hA>t+0.4)r.defs.push('ER');
     }else{
       const after=before+A,excess=after-total,cov=natW(A)+weave;
@@ -721,7 +725,7 @@ function drawPlates(ctx,o){
 }
 function passCellsLive(){
   const out=[];for(let c=0;c<NC;c++){const k=cur.cells[c];if(k.vol<0.3){out.push(null);continue;}
-    const off=k.sY/k.n,weave=Math.max(0,k.maxY-k.minY);out.push({A:k.vol,w:beadW(cur.type,k.vol,weave,WP.cum[c]),off});}return out;}
+    const off=k.sY/k.n,weave=Math.max(0,k.maxY-k.minY,k.wv||0);out.push({A:k.vol,w:beadW(cur.type,k.vol,weave,WP.cum[c]),off});}return out;}
 function drawBead(ctx,o,type,cells,mode,defsOn){
   const base=BASE[type];const {X,Y,sx,sy}=o;
   for(let c=0;c<NC;c++){const r=cells[c];if(!r||r.A<0.3)continue;
@@ -800,8 +804,8 @@ function drawGauges(ctx){
   bar(ctx,ix,y0+5+rh,iw,'Kecepatan jalan',arc.on?vSmooth:null,0,cur.vIdeal*2.6,cur.vBand,' mm/s');
   if(cur.type==='root')bar(ctx,ix,y0+5+2*rh,iw,'Posisi di kampuh',arc.y,-3,3,[-1,1],' mm');
   else{let mn=99,mx=-99;for(const p of yHist){mn=Math.min(mn,p[1]);mx=Math.max(mx,p[1]);}const wv=yHist.length?mx-mn:0;
-    const tA=targetArea(cur.type,cur.amp),need=cur.type==='cap'?widthAt(WP.thick)+2-natW(tA):Math.max(0,widthAt(Math.min(hOf(avgCum()+tA),WP.thick))-natW(tA));
-    bar(ctx,ix,y0+5+2*rh,iw,'Lebar ayunan',arc.on?wv:null,0,14,[Math.max(0,need-1),need+2],' mm');}
+    const need=needWeave();
+    bar(ctx,ix,y0+5+2*rh,iw,'Lebar ayunan',arc.on?wv:null,0,12,[Math.max(0,need-0.8),need+1.5],' mm');}
 }
 function drawPace(ctx){
   if(state!=='weld'||!cur||cfg.mode!=='latihan'||pace===null||pace>205)return;
@@ -815,12 +819,15 @@ function drawPad(ctx){
   ctx.fillStyle='#6C766F';ctx.font=font(11,500);ctx.textBaseline='top';
   for(const m of[0,50,100,150,200]){ctx.textAlign=m===0?'left':m===200?'right':'center';ctx.fillText(m+' mm',X(m),PY0+14);}ctx.textAlign='left';
   ctx.setLineDash([4,6]);ctx.strokeStyle='#4A544D';ctx.beginPath();ctx.moveTo(X(0),padCY);ctx.lineTo(X(200),padCY);ctx.stroke();ctx.setLineDash([]);
-  if(cur&&cur.type!=='root'){ctx.strokeStyle='rgba(242,183,5,.18)';ctx.beginPath();const a=cur.type==='cap'?(widthAt(WP.thick)/2):3;
-    ctx.moveTo(X(0),padCY-a*padSY);ctx.lineTo(X(200),padCY-a*padSY);ctx.moveTo(X(0),padCY+a*padSY);ctx.lineTo(X(200),padCY+a*padSY);ctx.stroke();}
+  if(cur&&cur.type!=='root'){const a=needWeave()/2;ctx.strokeStyle='rgba(242,183,5,.55)';ctx.lineWidth=1.5;ctx.beginPath();
+    ctx.moveTo(X(0),padCY-a*padSY);ctx.lineTo(X(200),padCY-a*padSY);ctx.moveTo(X(0),padCY+a*padSY);ctx.lineTo(X(200),padCY+a*padSY);ctx.stroke();ctx.lineWidth=1;
+    ctx.fillStyle='rgba(242,183,5,.8)';ctx.font=font(11,600);ctx.textBaseline='bottom';ctx.fillText('batas ayunan',X(0)+2,padCY-a*padSY-2);}
   ctx.fillStyle='#57625A';ctx.font=font(12,600);ctx.textBaseline='bottom';ctx.textAlign='right';
   ctx.textAlign='left';ctx.fillText('Area jempol kanan. Arah las →',X(0),H-6);
   if(cur&&state==='weld'&&cfg.mode==='latihan'&&pace!==null&&pace<=205){const x=X(pace);ctx.strokeStyle='rgba(98,192,138,.9)';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x,PY0+30);ctx.lineTo(x,H-24);ctx.stroke();
-    ctx.fillStyle='#62C08A';ctx.font=font(12,600);ctx.textBaseline='top';ctx.fillText('ikuti garis hijau',x+6,PY0+30);ctx.lineWidth=1;}
+    ctx.fillStyle='#62C08A';ctx.font=font(12,600);ctx.textBaseline='top';ctx.fillText(cur.type==='root'?'ikuti garis hijau':'ikuti titik hijau',x+6,PY0+30);ctx.lineWidth=1;
+    if(cur.type!=='root'){const sn=Math.sin(wph*Math.PI*2),sh=Math.sign(sn)*Math.pow(Math.abs(sn),0.45),yy=padCY+sh*needWeave()/2*padSY;
+      ctx.fillStyle='#62C08A';ctx.beginPath();ctx.arc(x,yy,10,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#0F1411';ctx.lineWidth=2;ctx.stroke();ctx.lineWidth=1;}}
   if(padPx&&padPtr&&!padPtr.plate){ctx.strokeStyle='#F2B705';ctx.lineWidth=2;ctx.beginPath();ctx.arc(padPx[0],padPx[1],22,0,Math.PI*2);ctx.stroke();}
 }
 function draw(){
