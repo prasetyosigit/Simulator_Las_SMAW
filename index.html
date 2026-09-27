@@ -219,7 +219,7 @@ body.demo-on .dbtn{display:inline-block}
 <div class="sheet" id="shSetup">
   <div class="card">
     <h1>Simulator las SMAW</h1>
-    <p class="sub">Sambungan tumpul kampuh V, pelat 200 × 50 mm, elektroda Ø2,6 mm. Latihan di sini tidak menghabiskan pelat.</p>
+    <p class="sub">Sambungan tumpul kampuh V, lebar pelat 50 mm, elektroda Ø2,6 mm. Latihan di sini tidak menghabiskan pelat.</p>
     <div class="grid2">
       <label class="field"><span>Nama siswa</span><input type="text" id="inNama" autocomplete="off" placeholder="Nama lengkap"></label>
       <div class="field"><span>Tebal pelat</span>
@@ -231,7 +231,7 @@ body.demo-on .dbtn{display:inline-block}
       </div>
       <div class="field"><span>Mode</span>
         <div class="seg" id="segMode"><button data-v="latihan" aria-pressed="true">Latihan</button><button data-v="uji" aria-pressed="false">Uji</button></div>
-        <small id="modeNote">Indikator busur, kecepatan, dan ayunan tampil di layar.</small>
+        <small id="modeNote">Pelat 100 mm. Indikator busur, kecepatan, dan ayunan tampil di layar.</small>
       </div>
     </div>
     <fieldset class="checks">
@@ -403,7 +403,7 @@ const DEF={
 /* ---------- State ---------- */
 const cfg={nama:'',thick:8,mode:'latihan',apd:false,dried:false};
 const lastAmp={root:70,fill:78,cap:74};
-const WP={thick:8,passes:[],cum:new Float32Array(NC),back:new Float32Array(NC),plateNo:1};
+const WP={thick:8,len:100,passes:[],cum:new Float32Array(NC),back:new Float32Array(NC),plateNo:1};
 let cur=null, state='setup', paused=true, pendingType='root', lastRec=null;
 const arc={on:false,L:6,x:-3,y:0,stuck:false,need:false,touchT:0,shortT:0,dv:0};
 const hand={tx:-3,ty:0};
@@ -419,7 +419,8 @@ function recompute(){
   WP.cum.fill(0);WP.back.fill(0);
   for(const p of WP.passes){for(let c=0;c<NC;c++){const r=p.cells[c];r.before=WP.cum[c];WP.cum[c]+=r.delta;if(p.type==='root')WP.back[c]=r.back;}}
 }
-function avgCum(){let s=0;for(let c=5;c<195;c++)s+=WP.cum[c];return s/190;}
+function avgCum(){let s=0;const e=WP.len-5;for(let c=5;c<e;c++)s+=WP.cum[c];return s/(e-5);}
+const lenFor=m=>m==='uji'?200:100;
 function targetArea(type,I){
   if(type==='root')return 11;
   if(type==='fill')return 15;
@@ -434,7 +435,7 @@ function resize(){
   const r=$('#cvwrap').getBoundingClientRect();
   dpr=Math.min(2,window.devicePixelRatio||1);W=r.width;H=r.height;
   cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);
-  PH=Math.round(H*0.62);PX0=18;SX=(W-36)/200;CY=PH*0.6;SY=PH/34;
+  PH=Math.round(H*0.62);PX0=18;SX=(W-36)/WP.len;CY=PH*0.6;SY=PH/34;
   PY0=PH+6;padCY=(PY0+H)/2;padSY=((H-PY0)/2-6)/6;
 }
 new ResizeObserver(resize).observe($('#cvwrap'));
@@ -482,7 +483,7 @@ addEventListener('keyup',e=>{if(e.code==='ArrowDown'||e.code==='KeyS')keys.down=
 
 let padPtr=null,padPx=null;
 function padMove(e){const r=cv.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top;padPx=[px,py];
-  hand.tx=clamp((px-PX0)/SX,-6,206);
+  hand.tx=clamp((px-PX0)/SX,-6,WP.len+6);
   hand.ty=clamp(padPtr.plate?(py-CY)/SY:(py-padCY)/padSY,-9,9);}
 cv.addEventListener('pointerdown',e=>{if(state!=='weld'||paused||padPtr||demo)return;try{cv.setPointerCapture(e.pointerId);}catch(_){}
   const r=cv.getBoundingClientRect();padPtr={id:e.pointerId,plate:(e.clientY-r.top)<PH};padMove(e);});
@@ -498,7 +499,7 @@ function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show'
 function segInit(sel,key,cb){$(sel).addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.disabled||!b.dataset.v)return;
   [...$(sel).children].forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));cfg[key]=key==='thick'?+b.dataset.v:b.dataset.v;cb&&cb();});}
 segInit('#segThick','thick');
-segInit('#segMode','mode',()=>{$('#modeNote').textContent=cfg.mode==='latihan'?'Indikator busur, kecepatan, dan ayunan tampil di layar.':'Tanpa indikator. Siswa hanya mengandalkan penglihatan dan suara busur.';});
+segInit('#segMode','mode',()=>{$('#modeNote').textContent=cfg.mode==='latihan'?'Pelat 100 mm. Indikator busur, kecepatan, dan ayunan tampil di layar.':'Pelat 200 mm sesuai job. Tanpa indikator, hanya mengandalkan penglihatan dan suara busur.';});
 const hintText=()=>'<b>Menyalakan busur:</b> dorong tombol kuning ke bawah sampai elektroda menyentuh pelat, sambil menggores cepat dengan jempol kanan di area bawah. Setelah menyala, tahan tombol kuning di garis hijau putus-putus dan ikuti garis hijau di area jempol kanan.'+(matchMedia('(pointer:fine)').matches?' Di komputer: tahan ↓ atau S untuk menurunkan, ↑ atau W untuk mengangkat, dan gerakkan mouse sambil ditekan.':'');
 
 $('#btnPrep').onclick=()=>{
@@ -506,14 +507,14 @@ $('#btnPrep').onclick=()=>{
   if(!cfg.nama){$('#setupWarn').textContent='Isi nama siswa dulu supaya riwayat latihan tercatat.';return;}
   if(!cfg.apd){$('#setupWarn').textContent='Pakai APD dulu: helm las, sarung tangan, dan apron.';return;}
   $('#setupWarn').textContent='';
-  if(WP.thick!==cfg.thick||!WP.passes.length){if(WP.passes.length)WP.plateNo++;WP.thick=cfg.thick;WP.passes=[];recompute();}
+  const ln=lenFor(cfg.mode);if(WP.thick!==cfg.thick||WP.len!==ln||!WP.passes.length){if(WP.passes.length)WP.plateNo++;WP.thick=cfg.thick;WP.len=ln;WP.passes=[];recompute();}
   openPass(nextType());
 };
 function nextType(){const n=WP.passes.length;if(!n)return 'root';const last=WP.passes[n-1].type;if(last==='cap')return 'cap';
   return (WP.thick-hOf(avgCum())<1.6)?'cap':'fill';}
 function openPass(type){
   pendingType=type;const P=PASS[type];state='pass';
-  $('#psTitle').textContent=P.nama;$('#psSub').textContent=`Elektroda ${P.el} Ø2,6 mm, posisi 1G, pelat ${WP.thick} mm (pelat virtual ke-${WP.plateNo})`;
+  $('#psTitle').textContent=P.nama;$('#psSub').textContent=`Elektroda ${P.el} Ø2,6 mm, posisi 1G, pelat ${WP.len} × 50 × ${WP.thick} mm (pelat virtual ke-${WP.plateNo})`;
   $('#psRef').textContent=cfg.mode==='latihan'?P.ref:'';$('#psTip').textContent=P.tip;
   setAmp(lastAmp[type]);show('#shPass');
 }
@@ -528,10 +529,10 @@ function startPass(type,ampOv){
   const amp=ampOv||lastAmp[type];
   const vi=volRate(amp)/targetArea(type,amp);
   cur={type,amp,cells:Array.from({length:NC},newCell),sticks:0,breaks:0,strikes:0,electrodes:1,time:0,arcTime:0,dried:cfg.dried,mode:cfg.mode,vBand:[vi*0.75,vi*1.3],vIdeal:vi};
-  elecLen=EL_LEN;Object.assign(arc,{on:false,L:6,x:-3,y:0,stuck:false,need:false,touchT:0,shortT:0,dv:0});
+  elecLen=cfg.mode==='latihan'?Math.round(EL_STUB+0.55*(EL_LEN-EL_STUB)):EL_LEN;resize();Object.assign(arc,{on:false,L:6,x:-3,y:0,stuck:false,need:false,touchT:0,shortT:0,dv:0});
   pace=null;wph=0;weaveNow=0;hand.tx=-3;hand.ty=0;heat.fill(0);sparks=[];yHist=[];xHist=[];vSmooth=0;handSpeed=0;firstStrike=false;
   ['#fUnstick','#fChange','#fSlag','#fBack'].forEach(s=>$(s).hidden=true);
-  $('#hint').innerHTML=hintText()+(type==='root'?'':' <b>Ayunan:</b> gerakkan jempol naik-turun di antara dua garis kuning mengikuti titik hijau. Tahan sebentar di tiap garis, lewati bagian tengah lebih cepat.');$('#hint').hidden=!!demo;
+  $('#hint').innerHTML=hintText()+(cfg.mode==='latihan'?' <b>Elektroda awal sisa pakai:</b> bersiaplah mengganti elektroda di tengah pelat.':'')+(type==='root'?'':' <b>Ayunan:</b> gerakkan jempol naik-turun di antara dua garis kuning mengikuti titik hijau. Tahan sebentar di tiap garis, lewati bagian tengah lebih cepat.');$('#hint').hidden=!!demo;
   $('#bPass').textContent=`${PASS[type].nama}, ${PASS[type].el}`;$('#bAmp').textContent=amp+' A';
   $('#bFinish').disabled=false;
   state='weld';show(null);requestAnimationFrame(placeHold);
@@ -580,7 +581,7 @@ $('#btnBackRes').onclick=()=>{$('#fBack').hidden=true;show('#shResult');};
 const TUTKEY='simlas-tutorial-dilihat';
 const holdPos=amp=>0.06+0.94*Math.pow(burnRate(amp)/9,0.8);
 function setJoy(v){joyVal=clamp(v,-1,1);const R=track.getBoundingClientRect().height/2-22;knob.style.transform=`translateY(${joyVal*R}px)`;}
-function synthPass(type,delta,back,w){const cells=[];for(let c=0;c<NC;c++)cells.push({defs:[],A:delta+back,before:0,delta,back,bt:false,w,off:0,L:2,I:70,v:1.7,weave:0,p:1});
+function synthPass(type,delta,back,w){const cells=[];for(let c=0;c<NC;c++){const on=c<WP.len;cells.push({defs:[],A:on?delta+back:0,before:0,delta:on?delta:0,back:on?back:0,bt:false,w,off:0,L:2,I:70,v:1.7,weave:0,p:1});}
   return {type,amp:70,cells,score:100,counts:{},sticks:0,breaks:0,electrodes:1,time:0,arcTime:0,avgL:2,avgV:1.7,vBand:[1,2],mode:'latihan'};}
 const CAP={
   intro:{root:'Tangan kiri memegang <b>tombol kuning</b> untuk tinggi elektroda. Jempol kanan bergerak di area bawah, ditunjukkan <b>lingkaran putih</b>.',
@@ -621,8 +622,8 @@ function capText(){
 }
 function startDemo(type,origin){
   demo={type,origin,phase:'intro',pt:0,speed:1,p0:null,restrike:false,endFix:false,
-    stash:{passes:WP.passes,thick:WP.thick,mode:cfg.mode,dried:cfg.dried}};
-  cfg.mode='latihan';cfg.dried=true;WP.thick=cfg.thick;WP.passes=[];
+    stash:{passes:WP.passes,thick:WP.thick,len:WP.len,mode:cfg.mode,dried:cfg.dried}};
+  cfg.mode='latihan';cfg.dried=true;WP.thick=cfg.thick;WP.len=100;WP.passes=[];
   if(type!=='root')WP.passes.push(synthPass('root',9,2,4.5));
   recompute();
   if(type==='cap'){const t=WP.thick;WP.passes.push(synthPass('fill',areaUpTo(t-1)-WP.cum[100],0,widthAt(t-1)));recompute();}
@@ -632,7 +633,7 @@ function startDemo(type,origin){
 }
 function exitDemo(){
   if(!demo)return null;const d=demo;demo=null;
-  WP.passes=d.stash.passes;WP.thick=d.stash.thick;cfg.mode=d.stash.mode;cfg.dried=d.stash.dried;recompute();
+  WP.passes=d.stash.passes;WP.thick=d.stash.thick;WP.len=d.stash.len;resize();cfg.mode=d.stash.mode;cfg.dried=d.stash.dried;recompute();
   state='setup';cur=null;pace=null;hudLeft=false;arc.on=false;arc.stuck=false;heat.fill(0);sparks=[];setJoy(0);
   ['#fUnstick','#fChange','#fSlag','#fBack'].forEach(x=>$(x).hidden=true);$('#hint').hidden=true;$('#hold').hidden=true;
   document.body.classList.remove('demo-on');$('#bPass').textContent='Simulator las';
@@ -667,9 +668,9 @@ function demoCtl(dt){
       setJoy(holdPos(amp)+clamp((arc.L-Lt)*0.3,-0.35,0.35));
       hand.tx=p;
       if(d.type!=='root'){const sn=Math.sin(wph*Math.PI*2);hand.ty=Math.sign(sn)*Math.pow(Math.abs(sn),0.45)*needWeave()/2;}else hand.ty=0;
-      const slow=(d.type==='root'&&p>32&&p<60)||p<(d.p0||0)+30||elecLen<EL_STUB+30||p>190;
+      const slow=(d.type==='root'&&p>32&&p<60)||p<(d.p0||0)+30||elecLen<EL_STUB+30||p>WP.len-10;
       d.speed=slow?1:3;
-      if(p>=199){go('end');d.speed=1;}
+      if(p>=WP.len-1){go('end');d.speed=1;}
       break;}
     case 'change':setJoy(0);if(d.pt>0.6)$('#fChange').hidden=false;
       if(d.pt>3){elecLen=EL_LEN;arc.need=false;arc.L=6;cur.electrodes++;$('#fChange').hidden=true;d.strikeX=(pace??arc.x)-4;d.restrike=true;go('strike');}
@@ -691,8 +692,8 @@ $('#dSkip').onclick=()=>{const d=exitDemo();if(d)backTo(d);};
 
 /* ---------- Simulasi per frame ---------- */
 function deposit(x0,x1,vol,en,dt){
-  const a=Math.min(x0,x1),b=Math.max(x0,x1);if(b<0||a>=NC)return;
-  const c0=clamp(Math.floor(a),0,NC-1),c1=clamp(Math.floor(b),0,NC-1),n=c1-c0+1;
+  const a=Math.min(x0,x1),b=Math.max(x0,x1);if(b<0||a>=WP.len)return;
+  const c0=clamp(Math.floor(a),0,WP.len-1),c1=clamp(Math.floor(b),0,WP.len-1),n=c1-c0+1;
   for(let c=c0;c<=c1;c++){const k=cur.cells[c];k.vol+=vol/n;k.E+=en/n;k.t+=dt/n;k.n++;k.sL+=arc.L;k.sI+=cur.amp;k.sY+=arc.y;
     if(arc.y<k.minY)k.minY=arc.y;if(arc.y>k.maxY)k.maxY=arc.y;k.wv=Math.max(k.wv||0,weaveNow);k.vis=true;heat[c]=1;}
 }
@@ -744,7 +745,7 @@ function evaluate(){
     const r={defs:[],A:k.vol,before,delta:k.vol,back:0,bt:false,w:0,off:0,L:0,I:0,v:0,weave:0,p:0};
     if(!k.vis||k.vol<0.8){r.defs.push('NW');r.w=k.vol>0?natW(k.vol)*0.6:0;cells.push(r);continue;}
     const A=k.vol,L=k.sL/k.n,I=k.sI/k.n,off=k.sY/k.n,weave=Math.max(0,k.maxY-k.minY,k.wv||0),v=k.t>0?1/k.t:0;
-    Object.assign(r,{L,I,off,weave,v});if(c>=5&&c<195){sL+=L;sV+=Math.min(v,8);nn++;}
+    Object.assign(r,{L,I,off,weave,v});if(c>=5&&c<WP.len-5){sL+=L;sV+=Math.min(v,8);nn++;}
     const Lf=clamp(1.15-0.075*L,0.6,1.1);
     if(type==='root'){
       const p=k.E*Lf/900*Math.pow(I/70,1.2);r.p=p;
@@ -773,8 +774,8 @@ function evaluate(){
     cells.push(r);
   }
   const counts={};let good=0;
-  for(let c=5;c<195;c++){const d=cells[c].defs;if(!d.length)good++;for(const x of new Set(d))counts[x]=(counts[x]||0)+1;}
-  const score=clamp(Math.round(100*good/190-3*P.sticks-2*P.breaks),0,100);
+  const e=WP.len-5;for(let c=5;c<e;c++){const d=cells[c].defs;if(!d.length)good++;for(const x of new Set(d))counts[x]=(counts[x]||0)+1;}
+  const score=clamp(Math.round(100*good/(WP.len-10)-3*P.sticks-2*P.breaks),0,100);
   const rec={type,amp:P.amp,cells,score,counts,sticks:P.sticks,breaks:P.breaks,electrodes:P.electrodes,time:P.time,arcTime:P.arcTime,
     avgL:nn?sL/nn:0,avgV:nn?sV/nn:0,vBand:P.vBand,mode:P.mode};
   WP.passes.push(rec);recompute();if(!demo)logHistory(rec);return rec;
@@ -807,17 +808,18 @@ function fillResult(r){
   let html=ents.map(([k,n])=>`<li><div class="h">${DEF[k][0]}<span>${n} mm</span></div><p>${DEF[k][1]}</p><p class="fix">Perbaikan: ${DEF[k][2]}</p></li>`).join('');
   if(r.sticks)html+=`<li><div class="h">Elektroda lengket<span>${r.sticks}×, −${3*r.sticks}</span></div><p>Elektroda menempel karena busur terlalu dekat atau arus terlalu kecil.</p><p class="fix">Perbaikan: gores lebih cepat saat menyalakan dan jangan menekan elektroda ke kawah las.</p></li>`;
   if(r.breaks)html+=`<li><div class="h">Busur putus<span>${r.breaks}×, −${2*r.breaks}</span></div><p>Elektroda terangkat terlalu tinggi sehingga busur padam.</p><p class="fix">Perbaikan: turunkan elektroda terus mengikuti elektroda yang terbakar.</p></li>`;
-  if(!html)html='<li><div class="h">Tidak ada cacat di daerah uji</div><p>Daerah uji: 5–195 mm dari ujung kiri pelat.</p></li>';
+  if(!html)html='<li><div class="h">Tidak ada cacat di daerah uji</div><p>Daerah uji: 5–'+(WP.len-5)+' mm dari ujung kiri pelat.</p></li>';
   $('#rsList').innerHTML=html;
   $('#rsNote').textContent=`Pelat virtual ke-${WP.plateNo}. Mengulang di simulator tidak memotong pelat baja sungguhan.`;
   setTab('temuan');
 }
 function redo(){WP.passes.pop();recompute();openPass(lastRec.type);}
-function setTab(t){rcTab=t;document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===t?'true':'false'));
+function setTab(t){secRange();rcTab=t;document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===t?'true':'false'));
   $('#tpTemuan').hidden=t!=='temuan';$('#tpCanvas').hidden=t==='temuan';$('#secCtl').hidden=t!=='penampang';
   if(t!=='temuan')requestAnimationFrame(drawRC);}
 document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setTab(b.dataset.tab);});
 $('#secPos').oninput=()=>drawRC();
+function secRange(){const r=$('#secPos');r.max=WP.len-6;if(+r.value>WP.len-6)r.value=Math.round(WP.len/2);}
 
 /* ---------- Riwayat ---------- */
 const HKEY='simlas-riwayat-v1';
@@ -825,21 +827,21 @@ function loadH(){try{return JSON.parse(localStorage.getItem(HKEY)||'[]');}catch(
 function saveH(h){try{localStorage.setItem(HKEY,JSON.stringify(h));}catch(e){}}
 function logHistory(r){
   const h=loadH();const top=Object.entries(r.counts).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,n])=>`${DEF[k][0]} ${n} mm`).join('; ');
-  h.push({waktu:new Date().toLocaleString('id-ID'),nama:cfg.nama,pelat:WP.plateNo,tebal:WP.thick,lapisan:PASS[r.type].nama,arus:r.amp,mode:r.mode,skor:r.score,
+  h.push({waktu:new Date().toLocaleString('id-ID'),nama:cfg.nama,pelat:WP.plateNo,panjang:WP.len,tebal:WP.thick,lapisan:PASS[r.type].nama,arus:r.amp,mode:r.mode,skor:r.score,
     busur:+r.avgL.toFixed(2),kecepatan:+r.avgV.toFixed(2),elektroda:r.electrodes,lengket:r.sticks,putus:r.breaks,durasi:Math.round(r.time),temuan:top||'-'});
   saveH(h.slice(-500));
 }
 function openHist(){
   const h=loadH();const names=new Set(h.map(x=>x.nama));
   $('#histSum').textContent=h.length?`${h.length} percobaan tercatat dari ${names.size} siswa di perangkat ini.`:'Belum ada percobaan tercatat di perangkat ini.';
-  $('#histBody').innerHTML=h.slice(-40).reverse().map(x=>`<tr><td>${x.waktu}</td><td>${esc(x.nama)}</td><td>${x.pelat} (${x.tebal} mm)</td><td>${x.lapisan}</td><td class="n">${x.arus}</td><td class="n">${x.skor}</td><td>${esc(x.temuan)}</td></tr>`).join('');
+  $('#histBody').innerHTML=h.slice(-40).reverse().map(x=>`<tr><td>${x.waktu}</td><td>${esc(x.nama)}</td><td>${x.pelat} (${x.panjang||200}×${x.tebal})</td><td>${x.lapisan}</td><td class="n">${x.arus}</td><td class="n">${x.skor}</td><td>${esc(x.temuan)}</td></tr>`).join('');
   $('#histTsv').hidden=true;show('#shHist');
 }
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 $('#histClose').onclick=()=>{if(state==='setup')show('#shSetup');else if(state==='result')show('#shResult');else if(state==='pass')show('#shPass');else show(null);};
 $('#histClear').onclick=()=>{if(confirm('Hapus semua riwayat latihan di perangkat ini?')){saveH([]);openHist();}};
 $('#histCopy').onclick=async()=>{
-  const h=loadH();const cols=['waktu','nama','pelat','tebal','lapisan','arus','mode','skor','busur','kecepatan','elektroda','lengket','putus','durasi','temuan'];
+  const h=loadH();const cols=['waktu','nama','pelat','panjang','tebal','lapisan','arus','mode','skor','busur','kecepatan','elektroda','lengket','putus','durasi','temuan'];
   const tsv=[cols.join('\t'),...h.map(x=>cols.map(c=>String(x[c]).replace(/\t|\n/g,' ')).join('\t'))].join('\n');
   const ta=$('#histTsv');ta.value=tsv;
   try{await navigator.clipboard.writeText(tsv);toast('Data tersalin. Tempel di Google Sheets.');}
@@ -856,17 +858,17 @@ function font(sz,w=600){return `${w} ${sz}px "Barlow Condensed","Arial Narrow",s
 
 function drawPlates(ctx,o){
   const t=WP.thick,topW=widthAt(t),{X,Y,x0,x1,top,bot}=o;
-  ctx.fillStyle='#0B0D0C';ctx.fillRect(X(0),Y(-GAP/2),X(200)-X(0),Y(GAP/2)-Y(-GAP/2));
+  ctx.fillStyle='#0B0D0C';ctx.fillRect(X(0),Y(-GAP/2),X(WP.len)-X(0),Y(GAP/2)-Y(-GAP/2));
   for(const s of[-1,1]){
     const yS=Y(s*topW/2),yE=s<0?top:bot,yR=Y(s*GAP/2);
     const gr=ctx.createLinearGradient(0,yS,0,yE);gr.addColorStop(0,'#6B747A');gr.addColorStop(1,'#545D63');
-    ctx.fillStyle=gr;ctx.fillRect(X(0),Math.min(yS,yE),X(200)-X(0),Math.abs(yE-yS));
+    ctx.fillStyle=gr;ctx.fillRect(X(0),Math.min(yS,yE),X(WP.len)-X(0),Math.abs(yE-yS));
     const gb=ctx.createLinearGradient(0,yR,0,yS);gb.addColorStop(0,'#8F979C');gb.addColorStop(1,'#C3C9CC');
-    ctx.fillStyle=gb;ctx.fillRect(X(0),Math.min(yR,yS),X(200)-X(0),Math.abs(yS-yR));
+    ctx.fillStyle=gb;ctx.fillRect(X(0),Math.min(yR,yS),X(WP.len)-X(0),Math.abs(yS-yR));
     ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1;ctx.beginPath();
-    for(let i=0;i<6;i++){const yy=yR+(yS-yR)*(i+0.5)/6;ctx.moveTo(X(0),yy);ctx.lineTo(X(200),yy);}ctx.stroke();
+    for(let i=0;i<6;i++){const yy=yR+(yS-yR)*(i+0.5)/6;ctx.moveTo(X(0),yy);ctx.lineTo(X(WP.len),yy);}ctx.stroke();
   }
-  ctx.strokeStyle='#2A302D';ctx.lineWidth=1;ctx.strokeRect(X(0)+.5,top+.5,X(200)-X(0)-1,bot-top-1);
+  ctx.strokeStyle='#2A302D';ctx.lineWidth=1;ctx.strokeRect(X(0)+.5,top+.5,X(WP.len)-X(0)-1,bot-top-1);
 }
 function passCellsLive(){
   const out=[];for(let c=0;c<NC;c++){const k=cur.cells[c];if(k.vol<0.3){out.push(null);continue;}
@@ -953,23 +955,23 @@ function drawGauges(ctx){
     bar(ctx,ix,y0+5+2*rh,iw,'Lebar ayunan',arc.on?wv:null,0,12,[Math.max(0,need-0.8),need+1.5],' mm');}
 }
 function drawPace(ctx){
-  if(state!=='weld'||!cur||cfg.mode!=='latihan'||pace===null||pace>205)return;
+  if(state!=='weld'||!cur||cfg.mode!=='latihan'||pace===null||pace>WP.len+5)return;
   const x=X(pace),yt=Y(-widthAt(WP.thick)/2)-4;
   ctx.fillStyle='#62C08A';ctx.beginPath();ctx.moveTo(x,yt);ctx.lineTo(x-6,yt-10);ctx.lineTo(x+6,yt-10);ctx.closePath();ctx.fill();
 }
 function drawPad(ctx){
   ctx.fillStyle='#1C211E';ctx.fillRect(0,PY0,W,H-PY0);
   ctx.strokeStyle='#353D38';ctx.lineWidth=1;ctx.beginPath();
-  for(let m=0;m<=200;m+=10){const x=X(m)+.5,big=m%50===0;ctx.moveTo(x,PY0+2);ctx.lineTo(x,PY0+(big?12:6));}ctx.stroke();
+  for(let m=0;m<=WP.len;m+=10){const x=X(m)+.5,big=m%50===0;ctx.moveTo(x,PY0+2);ctx.lineTo(x,PY0+(big?12:6));}ctx.stroke();
   ctx.fillStyle='#6C766F';ctx.font=font(11,500);ctx.textBaseline='top';
-  for(const m of[0,50,100,150,200]){ctx.textAlign=m===0?'left':m===200?'right':'center';ctx.fillText(m+' mm',X(m),PY0+14);}ctx.textAlign='left';
-  ctx.setLineDash([4,6]);ctx.strokeStyle='#4A544D';ctx.beginPath();ctx.moveTo(X(0),padCY);ctx.lineTo(X(200),padCY);ctx.stroke();ctx.setLineDash([]);
+  for(const m of(WP.len===200?[0,50,100,150,200]:[0,25,50,75,100])){ctx.textAlign=m===0?'left':m===WP.len?'right':'center';ctx.fillText(m+' mm',X(m),PY0+14);}ctx.textAlign='left';
+  ctx.setLineDash([4,6]);ctx.strokeStyle='#4A544D';ctx.beginPath();ctx.moveTo(X(0),padCY);ctx.lineTo(X(WP.len),padCY);ctx.stroke();ctx.setLineDash([]);
   if(cur&&cur.type!=='root'){const a=needWeave()/2;ctx.strokeStyle='rgba(242,183,5,.55)';ctx.lineWidth=1.5;ctx.beginPath();
-    ctx.moveTo(X(0),padCY-a*padSY);ctx.lineTo(X(200),padCY-a*padSY);ctx.moveTo(X(0),padCY+a*padSY);ctx.lineTo(X(200),padCY+a*padSY);ctx.stroke();ctx.lineWidth=1;
-    ctx.fillStyle='rgba(242,183,5,.8)';ctx.font=font(11,600);ctx.textBaseline='bottom';ctx.textAlign='right';ctx.fillText('batas ayunan',X(200),padCY-a*padSY-2);ctx.textAlign='left';}
+    ctx.moveTo(X(0),padCY-a*padSY);ctx.lineTo(X(WP.len),padCY-a*padSY);ctx.moveTo(X(0),padCY+a*padSY);ctx.lineTo(X(WP.len),padCY+a*padSY);ctx.stroke();ctx.lineWidth=1;
+    ctx.fillStyle='rgba(242,183,5,.8)';ctx.font=font(11,600);ctx.textBaseline='bottom';ctx.textAlign='right';ctx.fillText('batas ayunan',X(WP.len),padCY-a*padSY-2);ctx.textAlign='left';}
   ctx.fillStyle='#57625A';ctx.font=font(12,600);ctx.textBaseline='bottom';ctx.textAlign='right';
   ctx.textAlign='left';ctx.fillText('Area jempol kanan. Arah las →',X(0),H-6);
-  if(cur&&state==='weld'&&cfg.mode==='latihan'&&pace!==null&&pace<=205){const x=X(pace);ctx.strokeStyle='rgba(98,192,138,.9)';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x,PY0+30);ctx.lineTo(x,H-24);ctx.stroke();
+  if(cur&&state==='weld'&&cfg.mode==='latihan'&&pace!==null&&pace<=WP.len+5){const x=X(pace);ctx.strokeStyle='rgba(98,192,138,.9)';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x,PY0+30);ctx.lineTo(x,H-24);ctx.stroke();
     ctx.fillStyle='#62C08A';ctx.font=font(12,600);ctx.textBaseline='top';ctx.fillText(cur.type==='root'?'ikuti garis hijau':'ikuti titik hijau',x+6,PY0+30);ctx.lineWidth=1;
     if(cur.type!=='root'){const sn=Math.sin(wph*Math.PI*2),sh=Math.sign(sn)*Math.pow(Math.abs(sn),0.45),yy=padCY+sh*needWeave()/2*padSY;
       ctx.fillStyle='#62C08A';ctx.beginPath();ctx.arc(x,yy,10,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#0F1411';ctx.lineWidth=2;ctx.stroke();ctx.lineWidth=1;}}
@@ -977,7 +979,7 @@ function drawPad(ctx){
   if(padPx&&padPtr&&!padPtr.plate){ctx.strokeStyle='#F2B705';ctx.lineWidth=2;ctx.beginPath();ctx.arc(padPx[0],padPx[1],22,0,Math.PI*2);ctx.stroke();}
 }
 function draw(){
-  if(state==='weld'){if(arc.x>105)hudLeft=true;else if(arc.x<85)hudLeft=false;}
+  if(state==='weld'){if(arc.x>WP.len*0.52)hudLeft=true;else if(arc.x<WP.len*0.42)hudLeft=false;}
   g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
   g.fillStyle='#262B28';g.fillRect(0,0,W,PH);
   g.save();g.beginPath();g.rect(0,0,W,PH);g.clip();
@@ -1004,13 +1006,13 @@ function drawRC(){
   if(rcTab==='belakang')drawBack(ctx,w,h);else if(rcTab==='penampang')drawSection(ctx,w,h);else drawGraph(ctx,w,h);
 }
 function drawBack(ctx,w,h){
-  const root=WP.passes.find(p=>p.type==='root');const sx=(w-24)/200,sy=h/22,cy=h/2;
+  const root=WP.passes.find(p=>p.type==='root');const L0=WP.len,sx=(w-24)/L0,sy=h/22,cy=h/2;
   const Xb=m=>12+m*sx,Yb=l=>cy+l*sy;
-  ctx.fillStyle='#0B0D0C';ctx.fillRect(Xb(0),Yb(-GAP/2),200*sx,GAP*sy);
-  ctx.fillStyle='#5E676D';ctx.fillRect(Xb(0),Yb(-11),200*sx,Yb(-GAP/2)-Yb(-11));ctx.fillRect(Xb(0),Yb(GAP/2),200*sx,Yb(11)-Yb(GAP/2));
+  ctx.fillStyle='#0B0D0C';ctx.fillRect(Xb(0),Yb(-GAP/2),L0*sx,GAP*sy);
+  ctx.fillStyle='#5E676D';ctx.fillRect(Xb(0),Yb(-11),L0*sx,Yb(-GAP/2)-Yb(-11));ctx.fillRect(Xb(0),Yb(GAP/2),L0*sx,Yb(11)-Yb(GAP/2));
   if(!root){$('#rcCap').textContent='Belum ada root pass pada pelat ini.';return;}
   let lp=0,bt=0,ep=0;
-  for(let c=0;c<NC;c++){const r=root.cells[c];const x=Xb(c+0.5);
+  for(let c=0;c<L0;c++){const r=root.cells[c];const x=Xb(c+0.5);
     if(r.bt){bt++;ctx.fillStyle='#030303';ctx.beginPath();ctx.ellipse(x,cy,sx*1.3,(GAP/2+1.2)*sy,0,0,Math.PI*2);ctx.fill();
       ctx.fillStyle='#6B4A3A';ctx.beginPath();ctx.arc(x,cy+(GAP/2+1.4)*sy,1.8,0,Math.PI*2);ctx.fill();continue;}
     if(r.back>0.05){const ww=GAP+0.8+r.back*0.35;if(r.defs.includes('EP'))ep++;
@@ -1018,7 +1020,7 @@ function drawBack(ctx,w,h){
       ctx.strokeStyle='rgba(40,44,47,.45)';ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(x,cy+(r.off*0.3)*sy,Math.max(1.4,sx*1.15),ww/2*sy*0.9,0,-Math.PI/2,Math.PI/2);ctx.stroke();}
     else if(r.A>0.3)lp++;
   }
-  ctx.fillStyle='#8C978F';ctx.font=font(11,500);ctx.textBaseline='top';ctx.fillText('0',Xb(0),4);ctx.textAlign='right';ctx.fillText('200 mm',Xb(200),4);ctx.textAlign='left';
+  ctx.fillStyle='#8C978F';ctx.font=font(11,500);ctx.textBaseline='top';ctx.fillText('0',Xb(0),4);ctx.textAlign='right';ctx.fillText(L0+' mm',Xb(L0),4);ctx.textAlign='left';
   $('#rcCap').textContent=`Sisi belakang pelat. Tidak tembus ${lp} mm, berlubang ${bt} mm, penetrasi berlebih ${ep} mm.`;
 }
 function drawSection(ctx,w,h){
@@ -1052,7 +1054,7 @@ function drawSection(ctx,w,h){
   $('#rcCap').textContent=WP.passes.length?`Potongan di ${c} mm. `+notes.join('. ')+'.':'Belum ada lapisan.';
 }
 function drawGraph(ctx,w,h){
-  const r=lastRec;if(!r){return;}const pad=34,gw=w-pad-10,hh=(h-34)/2;const gx=m=>pad+m/200*gw;
+  const r=lastRec;if(!r){return;}const pad=34,gw=w-pad-10,hh=(h-34)/2;const gx=m=>pad+m/WP.len*gw;
   const plot=(y0,label,get,min,max,band,unit)=>{
     const gy=v=>y0+hh-clamp((v-min)/(max-min),0,1)*hh;
     ctx.fillStyle='rgba(98,192,138,.18)';ctx.fillRect(pad,gy(band[1]),gw,gy(band[0])-gy(band[1]));
@@ -1064,7 +1066,7 @@ function drawGraph(ctx,w,h){
   };
   plot(4,'Panjang busur (mm), pita hijau = ideal',k=>k.L,0,7,L_IDEAL,'');
   plot(8+hh,'Kecepatan jalan (mm/s)',k=>Math.min(k.v,8),0,Math.max(4,r.vBand[1]*2),r.vBand,'');
-  const yb=h-16;for(let c=0;c<NC;c++){const d=r.cells[c].defs;if(d.length){ctx.fillStyle=d.includes('NW')?'#6C766F':'#E27560';ctx.fillRect(gx(c),yb,Math.max(1,gw/200),8);}}
+  const yb=h-16;for(let c=0;c<NC;c++){const d=r.cells[c].defs;if(d.length){ctx.fillStyle=d.includes('NW')?'#6C766F':'#E27560';ctx.fillRect(gx(c),yb,Math.max(1,gw/WP.len),8);}}
   ctx.fillStyle='#8C978F';ctx.font=font(10.5,500);ctx.textBaseline='top';ctx.fillText('cacat',2,yb-1);
   $('#rcCap').textContent='Garis kuning = rekaman gerakan siswa sepanjang pelat. Tanda merah di bawah = lokasi cacat.';
 }
