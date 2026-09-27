@@ -60,15 +60,15 @@ button,input{font:inherit;color:inherit}
 .btn.ghost{border-color:var(--line)}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 
-#stage{position:relative;display:grid;grid-template-columns:86px 1fr;min-height:0;background:#1A1F1C}
+#stage{position:relative;display:grid;grid-template-columns:96px 1fr;min-height:0;background:#1A1F1C}
 #joy{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
   padding:6px 0;background:#181D1A;border-right:1px solid #2C332F;touch-action:none;color:#AEB8B0}
 .jl{font:600 12px "Barlow Condensed","Arial Narrow",sans-serif;letter-spacing:.03em}
-.track{position:relative;width:48px;flex:1;max-height:280px;min-height:120px;border-radius:24px;
+.track{position:relative;width:62px;flex:1;max-height:300px;min-height:130px;border-radius:31px;
   background:repeating-linear-gradient(to bottom,transparent 0 13px,#343c37 13px 14px) #222824;border:1.5px solid #3A433D}
 .track::after{content:"";position:absolute;left:6px;right:6px;top:50%;height:2px;margin-top:-1px;background:#56605A}
 .hold{position:absolute;left:-7px;right:-7px;height:0;border-top:3px dashed #62C08A;pointer-events:none}.hold[hidden]{display:none}
-.knob{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;
+.knob{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;
   background:var(--accent);box-shadow:inset 0 -4px 0 rgba(0,0,0,.25),0 2px 6px rgba(0,0,0,.4);will-change:transform}
 #cvwrap{position:relative;min-width:0;min-height:0;overflow:hidden}
 #cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
@@ -408,9 +408,15 @@ let cur=null, state='setup', paused=true, pendingType='root', lastRec=null;
 const arc={on:false,L:6,x:-3,y:0,stuck:false,need:false,touchT:0,shortT:0,dv:0};
 const hand={tx:-3,ty:0};
 let pace=null,hudLeft=false,wph=0,weaveNow=0;
+// Pola ayunan pemandu: jeda di tiap tepi (d) dan lintasan tengah (c), dalam detik.
+// Rujukan praktisi: jeda sekitar 0,5–1 s di tepi untuk elektroda kecil; melintas cepat di tengah.
+const WEAVE_T={fill:{d:0.7,c:0.4},cap:{d:0.8,c:0.5}};
+function weaveUnit(t,type){const w=WEAVE_T[type]||WEAVE_T.fill,d=w.d,c=w.c,T=2*d+2*c;let u=((t+d+c/2)%T+T)%T;
+  const sm=x=>x*x*(3-2*x);
+  if(u<d)return 1;u-=d;if(u<c)return 1-2*sm(u/c);u-=c;if(u<d)return -1;u-=d;return -1+2*sm(u/c);}
 function needWeave(type){if(!cur&&!type)return 0;type=type||cur.type;if(type==='root')return 0;const tA=targetArea(type,lastAmp[type]),nat=natW(tA);
   if(type==='cap')return Math.max(2,widthAt(WP.thick)+2-nat);
-  return Math.max(1.5,widthAt(Math.min(hOf(avgCum()+tA*0.5),WP.thick))-nat+0.5);}
+  return Math.max(2.5,widthAt(Math.min(hOf(avgCum()+tA*0.5),WP.thick))-nat+1);}
 let elecLen=EL_LEN, handSpeed=0, vSmooth=0, heat=new Float32Array(NC), sparks=[], yHist=[], xHist=[], firstStrike=false, slagT=0;
 const keys={up:false,down:false};
 
@@ -430,15 +436,19 @@ function targetArea(type,I){
 
 /* ---------- Canvas utama ---------- */
 const cv=$('#cv'),g=cv.getContext('2d');
+const CM=37.8; // 1 cm dalam piksel CSS
 let W=0,H=0,dpr=1,PH=0,PX0=18,SX=1,CY=0,SY=1,PY0=0,padCY=0,padSY=1;
 function resize(){
   const r=$('#cvwrap').getBoundingClientRect();
   dpr=Math.min(2,window.devicePixelRatio||1);W=r.width;H=r.height;
   cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);
-  PH=Math.round(H*0.62);PX0=18;SX=(W-36)/WP.len;CY=PH*0.6;SY=PH/34;
-  PY0=PH+6;padCY=(PY0+H)/2;padSY=((H-PY0)/2-6)/6;
+  PH=Math.round(H*0.58);PX0=Math.round(Math.min(2.4*CM,W*0.16));SX=(W-PX0-18)/WP.len;CY=PH*0.6;SY=PH/34;
+  PY0=PH+6;padCY=(PY0+24+H-16)/2;padSY=padScale();
 }
 new ResizeObserver(resize).observe($('#cvwrap'));
+function padScale(){ // piksel per mm arah ayunan di area jempol
+  if(!cur||cur.type==='root')return 0.8*CM;
+  const span=Math.min((H-PY0)-58,2.0*CM);return span/Math.max(needWeave(),0.5);}
 const X=mm=>PX0+mm*SX, Y=l=>CY+l*SY;
 
 /* ---------- Suara busur ---------- */
@@ -472,7 +482,7 @@ const vib=p=>{try{navigator.vibrate&&navigator.vibrate(p);}catch(e){}};
 
 /* ---------- Input: joystick & pad ---------- */
 const track=$('#track'),knob=$('#knob');let joyVal=0,joyId=null;
-function joyMove(e){const r=track.getBoundingClientRect(),R=r.height/2-22;let d=(e.clientY-(r.top+r.height/2))/R;d=clamp(d,-1,1);joyVal=d;knob.style.transform=`translateY(${d*R}px)`;}
+function joyMove(e){const r=track.getBoundingClientRect(),R=r.height/2-28;let d=(e.clientY-(r.top+r.height/2))/R;d=clamp(d,-1,1);joyVal=d;knob.style.transform=`translateY(${d*R}px)`;}
 $('#joy').addEventListener('pointerdown',e=>{if(joyId!==null||demo)return;joyId=e.pointerId;try{$('#joy').setPointerCapture(e.pointerId);}catch(_){}joyMove(e);});
 $('#joy').addEventListener('pointermove',e=>{if(e.pointerId===joyId)joyMove(e);});
 const joyUp=e=>{if(e.pointerId!==joyId)return;joyId=null;joyVal=0;knob.style.transform='';};
@@ -537,7 +547,7 @@ function startPass(type,ampOv){
   $('#bFinish').disabled=false;
   state='weld';show(null);requestAnimationFrame(placeHold);
 }
-function placeHold(){const h=$('#hold');if(!cur){h.hidden=true;return;}const tr=track.getBoundingClientRect(),R=tr.height/2-22,a=0.06+0.94*Math.pow(burnRate(cur.amp)/9,0.8);h.style.top=(tr.height/2+a*R)+'px';h.hidden=cfg.mode!=='latihan';}
+function placeHold(){const h=$('#hold');if(!cur){h.hidden=true;return;}const tr=track.getBoundingClientRect(),R=tr.height/2-28,a=0.06+0.94*Math.pow(burnRate(cur.amp)/9,0.8);h.style.top=(tr.height/2+a*R)+'px';h.hidden=cfg.mode!=='latihan';}
 addEventListener('resize',()=>requestAnimationFrame(placeHold));
 function strike(){xHist=[];if(pace===null&&arc.x>=0)pace=Math.max(arc.x,0);arc.on=true;arc.L=1.6;arc.touchT=0;cur.strikes++;vib(25);if(!firstStrike){firstStrike=true;$('#hint').hidden=true;}}
 function stick(){arc.on=false;arc.stuck=true;arc.L=0;arc.shortT=0;arc.touchT=0;cur.sticks++;vib([90,50,90]);if(!demo){$('#fUnstick').hidden=false;toast('Elektroda lengket.');}}
@@ -580,7 +590,7 @@ $('#btnBackRes').onclick=()=>{$('#fBack').hidden=true;show('#shResult');};
 /* ---------- Tutorial otomatis ---------- */
 const TUTKEY='simlas-tutorial-dilihat';
 const holdPos=amp=>0.06+0.94*Math.pow(burnRate(amp)/9,0.8);
-function setJoy(v){joyVal=clamp(v,-1,1);const R=track.getBoundingClientRect().height/2-22;knob.style.transform=`translateY(${joyVal*R}px)`;}
+function setJoy(v){joyVal=clamp(v,-1,1);const R=track.getBoundingClientRect().height/2-28;knob.style.transform=`translateY(${joyVal*R}px)`;}
 function synthPass(type,delta,back,w){const cells=[];for(let c=0;c<NC;c++){const on=c<WP.len;cells.push({defs:[],A:on?delta+back:0,before:0,delta:on?delta:0,back:on?back:0,bt:false,w,off:0,L:2,I:70,v:1.7,weave:0,p:1});}
   return {type,amp:70,cells,score:100,counts:{},sticks:0,breaks:0,electrodes:1,time:0,arcTime:0,avgL:2,avgV:1.7,vBand:[1,2],mode:'latihan'};}
 const CAP={
@@ -667,7 +677,7 @@ function demoCtl(dt){
       const p=pace??arc.x;let Lt=2.0;if(d.type==='root'&&p>40&&p<48)Lt=4.4;
       setJoy(holdPos(amp)+clamp((arc.L-Lt)*0.3,-0.35,0.35));
       hand.tx=p;
-      if(d.type!=='root'){const sn=Math.sin(wph*Math.PI*2);hand.ty=Math.sign(sn)*Math.pow(Math.abs(sn),0.45)*needWeave()/2;}else hand.ty=0;
+      if(d.type!=='root'){hand.ty=weaveUnit(wph,d.type)*needWeave()/2;}else hand.ty=0;
       const slow=(d.type==='root'&&p>32&&p<60)||p<(d.p0||0)+30||elecLen<EL_STUB+30||p>WP.len-10;
       d.speed=slow?1:3;
       if(p>=WP.len-1){go('end');d.speed=1;}
@@ -712,13 +722,13 @@ function step(dt){
   if(arc.need)return;
   if(arc.on){
     arc.dv+=(Math.random()-0.5)*3*dt;arc.dv*=1-1.2*dt;arc.dv=clamp(arc.dv,-0.4,0.4);
-    if(pace!==null){pace+=cur.vIdeal*dt;wph+=dt*1.0;}
-    {let mn=99,mx=-99;for(const q of yHist){if(q[0]>=cur.time-1.2){mn=Math.min(mn,q[1]);mx=Math.max(mx,q[1]);}}weaveNow=mx>mn?mx-mn:0;}const b=burnRate(cur.amp);arc.L+=(b-feed)*dt+arc.dv*dt;elecLen-=b*dt;cur.arcTime+=dt;
+    if(pace!==null){pace+=cur.vIdeal*dt;wph+=dt;}
+    {let mn=99,mx=-99;for(const q of yHist){if(q[0]>=cur.time-2.5){mn=Math.min(mn,q[1]);mx=Math.max(mx,q[1]);}}weaveNow=mx>mn?mx-mn:0;}const b=burnRate(cur.amp);arc.L+=(b-feed)*dt+arc.dv*dt;elecLen-=b*dt;cur.arcTime+=dt;
     if(arc.L<0)arc.L=0;
     deposit(x0,arc.x,volRate(cur.amp)*dt,(19+arc.L)*cur.amp*dt,dt);
     xHist.push([cur.time,arc.x]);while(xHist.length>2&&xHist[0][0]<cur.time-1.5)xHist.shift();
     {const a=xHist[0],span=cur.time-a[0];const vx=span>0.3?Math.max(0,(arc.x-a[1])/span):0;vSmooth+=(vx-vSmooth)*Math.min(1,dt*4);}
-    yHist.push([cur.time,arc.y]);while(yHist.length&&yHist[0][0]<cur.time-1.4)yHist.shift();
+    yHist.push([cur.time,arc.y]);while(yHist.length&&yHist[0][0]<cur.time-2.8)yHist.shift();
     const th=cur.amp<PASS[cur.type].ideal[0]-5?0.6:0.35;
     if(arc.L<th){arc.shortT+=dt;if(arc.shortT>0.25){stick();return;}}else arc.shortT=0;
     if(arc.L>L_BREAK){arc.on=false;cur.breaks++;if(!demo)toast('Busur putus. Turunkan elektroda dan gores lagi.');}
@@ -961,6 +971,7 @@ function drawPace(ctx){
 }
 function drawPad(ctx){
   ctx.fillStyle='#1C211E';ctx.fillRect(0,PY0,W,H-PY0);
+  ctx.fillStyle='#151916';ctx.fillRect(0,PY0,X(0)-6,H-PY0);ctx.fillStyle='#4E5851';ctx.font=font(11,600);ctx.textBaseline='middle';ctx.textAlign='center';ctx.fillText('ruang',(X(0)-6)/2,padCY-8);ctx.fillText('jempol',(X(0)-6)/2,padCY+6);ctx.textAlign='left';
   ctx.strokeStyle='#353D38';ctx.lineWidth=1;ctx.beginPath();
   for(let m=0;m<=WP.len;m+=10){const x=X(m)+.5,big=m%50===0;ctx.moveTo(x,PY0+2);ctx.lineTo(x,PY0+(big?12:6));}ctx.stroke();
   ctx.fillStyle='#6C766F';ctx.font=font(11,500);ctx.textBaseline='top';
@@ -968,15 +979,15 @@ function drawPad(ctx){
   ctx.setLineDash([4,6]);ctx.strokeStyle='#4A544D';ctx.beginPath();ctx.moveTo(X(0),padCY);ctx.lineTo(X(WP.len),padCY);ctx.stroke();ctx.setLineDash([]);
   if(cur&&cur.type!=='root'){const a=needWeave()/2;ctx.strokeStyle='rgba(242,183,5,.55)';ctx.lineWidth=1.5;ctx.beginPath();
     ctx.moveTo(X(0),padCY-a*padSY);ctx.lineTo(X(WP.len),padCY-a*padSY);ctx.moveTo(X(0),padCY+a*padSY);ctx.lineTo(X(WP.len),padCY+a*padSY);ctx.stroke();ctx.lineWidth=1;
-    ctx.fillStyle='rgba(242,183,5,.8)';ctx.font=font(11,600);ctx.textBaseline='bottom';ctx.textAlign='right';ctx.fillText('batas ayunan',X(WP.len),padCY-a*padSY-2);ctx.textAlign='left';}
+    ctx.fillStyle='rgba(242,183,5,.8)';ctx.font=font(11,600);ctx.textBaseline='top';ctx.textAlign='right';ctx.fillText('batas ayunan',X(WP.len),padCY+a*padSY+3);ctx.textAlign='left';}
   ctx.fillStyle='#57625A';ctx.font=font(12,600);ctx.textBaseline='bottom';ctx.textAlign='right';
-  ctx.textAlign='left';ctx.fillText('Area jempol kanan. Arah las →',X(0),H-6);
+  ctx.textAlign='left';
   if(cur&&state==='weld'&&cfg.mode==='latihan'&&pace!==null&&pace<=WP.len+5){const x=X(pace);ctx.strokeStyle='rgba(98,192,138,.9)';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x,PY0+30);ctx.lineTo(x,H-24);ctx.stroke();
     ctx.fillStyle='#62C08A';ctx.font=font(12,600);ctx.textBaseline='top';ctx.fillText(cur.type==='root'?'ikuti garis hijau':'ikuti titik hijau',x+6,PY0+30);ctx.lineWidth=1;
-    if(cur.type!=='root'){const sn=Math.sin(wph*Math.PI*2),sh=Math.sign(sn)*Math.pow(Math.abs(sn),0.45),yy=padCY+sh*needWeave()/2*padSY;
-      ctx.fillStyle='#62C08A';ctx.beginPath();ctx.arc(x,yy,10,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#0F1411';ctx.lineWidth=2;ctx.stroke();ctx.lineWidth=1;}}
-  if(demo&&state==='weld'){const gx=X(hand.tx),gy=clamp(padCY+hand.ty*padSY,PY0+8,H-8);ctx.fillStyle='rgba(255,255,255,.18)';ctx.strokeStyle='#FFFFFF';ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(gx,gy,20,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.lineWidth=1;}
-  if(padPx&&padPtr&&!padPtr.plate){ctx.strokeStyle='#F2B705';ctx.lineWidth=2;ctx.beginPath();ctx.arc(padPx[0],padPx[1],22,0,Math.PI*2);ctx.stroke();}
+    if(cur.type!=='root'){const sh=weaveUnit(wph,cur.type),yy=padCY+sh*needWeave()/2*padSY;
+      ctx.fillStyle='#62C08A';ctx.beginPath();ctx.globalAlpha=.55;ctx.arc(x,yy,0.8*CM,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;ctx.strokeStyle='#62C08A';ctx.lineWidth=2.5;ctx.stroke();ctx.fillStyle='#0F1411';ctx.beginPath();ctx.arc(x,yy,4,0,Math.PI*2);ctx.fill();ctx.lineWidth=1;}}
+  if(demo&&state==='weld'){const gx=X(hand.tx),gy=clamp(padCY+hand.ty*padSY,PY0+8,H-8);ctx.fillStyle='rgba(255,255,255,.18)';ctx.strokeStyle='#FFFFFF';ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(gx,gy,0.85*CM,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.lineWidth=1;}
+  if(padPx&&padPtr&&!padPtr.plate){ctx.strokeStyle='#F2B705';ctx.lineWidth=2;ctx.beginPath();ctx.arc(padPx[0],padPx[1],0.85*CM,0,Math.PI*2);ctx.stroke();}
 }
 function draw(){
   if(state==='weld'){if(arc.x>WP.len*0.52)hudLeft=true;else if(arc.x<WP.len*0.42)hudLeft=false;}
